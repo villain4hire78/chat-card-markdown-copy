@@ -4,7 +4,7 @@
   "description": "Adds a button to copy Foundry chat messages and roll results as Markdown.",
   "version": "1.0.0",
   "manifest": "https://github.com/villain4hire78/chat-card-markdown-copy/releases/latest/download/module.json",
-  "download": "https://github.com/villain4hire78/chat-card-markdown-copy/releases/latest/download/module.zip",
+  "download": "https://github.com/villain4hire78/chat-card-markdown-copy/releases/latest/download/chat-card-markdown-copy-v1.0.0.zip",
   "compatibility": {
     "minimum": "12",
     "verified": "14"
