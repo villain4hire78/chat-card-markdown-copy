@@ -1,0 +1,19 @@
+.chat-card-markdown-copy-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  margin-inline-start: 0.35rem;
+  min-height: 1.5rem;
+  min-width: 1.5rem;
+  opacity: 0.7;
+  padding: 0.15rem;
+}
+
+.chat-card-markdown-copy-button:hover,
+.chat-card-markdown-copy-button:focus-visible {
+  opacity: 1;
+}
