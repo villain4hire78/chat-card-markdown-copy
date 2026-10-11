@@ -18,7 +18,14 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
     event.preventDefault();
     event.stopPropagation();
     try {
-      await navigator.clipboard.writeText(messageToMarkdown(message, html));
+      const markdown = messageToMarkdown(message, html);
+      console.debug(`${MODULE_ID} | Copy source`, {
+        messageId: message.id,
+        messageContent: message.content,
+        html: html.outerHTML,
+        markdown,
+      });
+      await navigator.clipboard.writeText(markdown);
       ui.notifications.info("Chat message copied as Markdown.");
     } catch (error) {
       console.error(`${MODULE_ID} | Could not write to clipboard`, error);
@@ -38,11 +45,14 @@ function messageToMarkdown(message, html) {
 }
 
 function htmlToMarkdown(message, html) {
+  const brData = message.getFlag?.("betterrolls-swade2", "br_data");
+  if (brData) return betterRollsToMarkdown(message, brData, html);
+
   const content = html.querySelector(".message-content") || html;
   const clone = content.cloneNode(true);
-  const betterRollsCard = clone.querySelector(".brsw-card");
-  if (betterRollsCard) return betterRollsToMarkdown(betterRollsCard);
-  const systemCard = clone.querySelector(".dnd5e2.chat-card, .dnd5e.chat-card, .chat-card");
+  const systemCard = clone.matches?.(".dnd5e2.chat-card, .dnd5e.chat-card, .chat-card")
+    ? clone
+    : clone.querySelector(".dnd5e2.chat-card, .dnd5e.chat-card, .chat-card");
   if (systemCard) return systemCardToMarkdown(systemCard, message);
 
   clone.querySelectorAll(`.${MODULE_ID}-button, button, input, select, textarea, form,
@@ -86,22 +96,33 @@ function systemCardToMarkdown(card, message) {
     || normalizeMarkdown(convertNode(card.cloneNode(true)));
 }
 
-function betterRollsToMarkdown(card) {
-  const title = card.querySelector(".brsw-header-title")?.textContent?.trim();
+function betterRollsToMarkdown(message, brData, html) {
+  const content = html.querySelector(".message-content") || html;
+  const cardRoot = content.matches?.(".brsw-card") ? content : content.querySelector(".brsw-card") || content;
+  const title = cardRoot.querySelector(".brsw-header-title")?.textContent?.trim();
   const lines = [];
-  if (title) lines.push(`**${title}**`);
+  const actor = game.actors.get(brData.actor_id) || game.actors.get(brData.token_id)?.actor;
+  const trait = brData.trait?.id ? actor?.items?.get(brData.trait.id) : null;
+  const traitTitle = trait?.name || cardRoot.querySelector(".brsw-trait-title")?.textContent?.trim();
+  const isSkillCard = Number(brData.type) === 2;
 
-  const context = card.querySelector(".brsw-card-note-extra")?.textContent?.trim();
-  if (context) lines.push(context);
+  const context = cardRoot.querySelector(".brsw-card-note-extra")?.textContent?.trim();
+  const isPowerCard = Boolean(cardRoot.querySelector(".brsw-pp-cost, .brsw-pp-toggle"));
+  if (context && isPowerCard) lines.push(context);
 
-  const rollValues = Array.from(card.querySelectorAll(".brsw-roll-value-total"))
+  const storedDice = brData.traitRoll?.currentRoll?.dice || [];
+  const rollValues = storedDice.map((die) => die.finalTotal ?? die.total ?? die.result)
+    .filter((value) => value !== undefined && value !== null && value !== "")
+    .map(String);
+  if (!rollValues.length) rollValues.push(...Array.from(cardRoot.querySelectorAll(".brsw-roll-value-total"))
     .map((row) => row.textContent.trim())
-    .filter(Boolean);
-  const traitNames = Array.from(card.querySelectorAll(".brsw-roll-detail-row"))
-    .filter((row) => !row.closest(".brsw-roll-detail")?.classList.contains("brsw-collapsed"))
+    .filter(Boolean));
+  const traitRollDetail = cardRoot.querySelector(".brsw-roll-detail:not(.brsw-collapsed)");
+  const traitNames = Array.from(cardRoot.querySelectorAll(".brsw-roll-detail-row"))
+    .filter((row) => row.closest(".brsw-roll-detail") === traitRollDetail)
     .map((row) => row.textContent.trim())
     .filter((text) => /\bTN\s*\d+\s*Result\s*\d+\b/i.test(text));
-  const damageRows = Array.from(card.querySelectorAll(".brsw-damage-roll-row"))
+  const damageRows = Array.from(cardRoot.querySelectorAll(".brsw-damage-roll-row"))
     .map((row) => {
       const label = row.querySelector(".brsw-damage-roll-target")?.textContent?.trim();
       const result = row.querySelector(".brsw-damage-roll-damage")?.textContent?.trim();
@@ -112,9 +133,14 @@ function betterRollsToMarkdown(card) {
   // Better Rolls renders the die faces in .brsw-roll-value-total and the target/result
   // interpretation in .brsw-roll-detail. Keep those outcomes while excluding descriptions,
   // modifiers, resource controls, reroll buttons, and the card's other action interface.
-  if (rollValues.length) lines.push(`**Dice:** ${rollValues.join(" | ")}`);
+  if (isSkillCard) {
+    const die = trait?.system?.die?.sides ? `d${trait.system.die.sides}` : "";
+    lines.push([traitTitle, die].filter(Boolean).join(" ") || title);
+  } else if (title) lines.push(`**${title}**`);
+  if (!isSkillCard && traitTitle && traitTitle !== title) lines.push(`**${traitTitle}**`);
+  if (rollValues.length) lines.push(`Dice: ${rollValues.join(" | ")}`);
   if (traitNames.length) lines.push(traitNames.join("\n"));
-  if (damageRows.length) lines.push(damageRows.join("\n"));
+  if (damageRows.length) lines.push(`Damage\n${damageRows.join("\n")}`);
 
   return normalizeMarkdown(lines.join("\n\n"));
 }
